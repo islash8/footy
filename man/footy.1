@@ -1,0 +1,196 @@
+.TH FOOTY 1 "September 2026" "footy 1.1" "User Commands"
+.SH NAME
+footy \- rank today's football matches by how interesting they are
+.SH SYNOPSIS
+.B footy
+.RI [ options ]
+.SH DESCRIPTION
+.B footy
+lists football fixtures for a given day, ranked by how interesting each match
+looks. It reads ESPN's public JSON API, so it needs no API key or account, and
+shows no advertising, cookie banners or trackers.
+.PP
+Each fixture is scored from the league position of both sides, their recent
+form, how tight the gap between them is, how many goals the two teams tend to
+be involved in, and whether the fixture is a derby. Teams listed in
+.I favourites
+receive a boost. The score is multiplied by the competition's weight and
+rendered as a rating from one to five stars on an absolute scale, so a quiet
+day genuinely looks quiet.
+.SH OPTIONS
+.TP
+.BR \-d ", " \-\-date " " \fIYYYY-MM-DD\fR
+Show a specific date instead of today.
+.TP
+.BR \-t ", " \-\-tomorrow
+Show tomorrow.
+.TP
+.BR \-w ", " \-\-week
+Show the next seven days.
+.TP
+.BR \-n ", " \-\-limit " " \fIN\fR
+Show only the top \fIN\fR matches.
+.TP
+.BR \-s ", " \-\-min\-stars " " \fIN\fR
+Hide matches rated below \fIN\fR stars (1\-5).
+.TP
+.BR \-f ", " \-\-fixtures
+Show the next matches for the teams listed in
+.IR favourites ,
+looking up to three weeks ahead. Only the competitions those teams actually
+play in are searched.
+.TP
+.B \-\-live
+Show only matches being played right now, with scores. If nothing is in play,
+report the next kickoff instead.
+.TP
+.BR \-g ", " \-\-by\-league
+Group by competition and show the best of each, rather than one global
+ranking. Useful when following many leagues, as a strong league will
+otherwise bury a weaker one.
+.TP
+.BR \-T ", " \-\-table " " [\fILEAGUE\fR]
+Show a league table. The name is matched loosely, so
+.BR pl ", " laliga ", " champ ", " 2.bl " and " eredivisie
+all work. Omit the name for every tracked table.
+.TP
+.B \-\-notify
+Send a desktop notification listing the day's top matches, then exit.
+.TP
+.BR \-\-watch " " [\fIN\fR]
+Open the N-th match in the day's ranking in a local IPTV player. The channel
+is resolved from a beIN MENA EPG by kickoff time and team names, then matched
+to a provider stream at the best available quality; see
+.I "WATCHING A MATCH"
+below. Omit \fIN\fR for an interactive numbered list.
+.TP
+.B \-\-playlist
+Print an M3U playlist where each match is a channel named after the fixture,
+for importing into an IPTV player.
+.TP
+.B \-\-iptv\-channels
+List the IPTV provider's channels, grouped by name and quality, to help fill
+in
+.IR "iptv.channels"
+hints.
+.TP
+.B \-\-import\-iptvnator
+Local one-shot helper: read the Xtream login out of an iptvnator
+installation on this machine and write an
+.B [iptv]
+section into
+.I config.toml
+(which is gitignored). Never run automatically; the
+.B [iptv]
+section is always bring-your-own.
+.TP
+.B \-\-json
+Print machine-readable JSON.
+.TP
+.B \-\-color
+Force colour even when the output is piped, for example into
+.BR less (1)
+with \fB\-R\fR.
+.TP
+.B \-\-no\-color
+Disable colour.
+.TP
+.B \-\-version
+Print the version and exit.
+.SH OUTPUT
+A fixture line reads:
+.PP
+.RS
+.EX
+****.  17:00  C Palace 18 (H) v Liverpool 13 (A)  PL <3
+              LLWLD / DDDLD
+.EE
+.RE
+.PP
+The stars are the rating, followed by kickoff in local time (or
+.B LIVE
+/
+.BR FT ),
+each club with its league position,
+.BR (H) " and " (A)
+for home and away, the competition, and
+.B <3
+if it is a team you follow. The second line is each side's last five results.
+.PP
+Team names are coloured by who is expected to win: green for the favourite,
+amber for the underdog, and purple when it is too close to call. That
+expectation comes from league position (70%), recent form (30%) and a small
+allowance for playing at home; early in a season the margin required to name
+a favourite is widened, because the table has not yet earned that confidence.
+Note that this is unrelated to
+.IR favourites ,
+which marks your own teams with
+.BR <3 .
+.PP
+Colour is truecolor where the terminal advertises it, 256-colour or basic ANSI
+otherwise, and is disabled when output is not a terminal.
+.SH WATCHING A MATCH
+.BI "footy \-\-watch " N
+opens the N-th match in a local player. This is an optional, bring-your-own
+feature: it only activates when
+.I config.toml
+has an
+.B [iptv]
+section with your own IPTV provider credentials, and the core command works
+identically without it. The channel is found from a public
+beIN MENA EPG (scraped from beinsports.com), which lists the evening's
+fixtures with their assigned channels; the programme airing closest to the
+match's kickoff that names both teams decides the channel, which is then
+matched by name to a stream on the configured Xtream provider and played at
+the best available quality. Matches the EPG cannot name fall back to an
+interactive channel picker, which remembers the last choice per league in
+.IR ~/.cache/footy/watchstate.json .
+.PP
+Credentials are never fetched automatically. Either paste them into
+.I config.toml
+under an
+.B [iptv]
+section (see
+.IR config.example.toml ),
+or, if iptvnator is installed on this machine, run
+.B footy \-\-import\-iptvnator
+to copy them across in one shot. They are never printed. The EPG URL is
+configurable.
+.SH FILES
+.TP
+.I config.toml
+(in the footy directory) Teams followed, competitions tracked, and their
+weights. Edit and re-run;
+there is nothing to reload. An
+.B [iptv]
+section configures the IPTV provider, player, quality preference and EPG
+source for
+.BR \-\-watch .
+.TP
+.I ~/.cache/footy
+Cached responses. Fixtures are held for five minutes and tables for six hours,
+and a stale cache is served if the network is unavailable. The IPTV channel
+list and EPG are cached for six hours, and the per-league channel pick is
+remembered in
+.IR watchstate.json .
+.SH ENVIRONMENT
+.TP
+.B FOOTY_CONFIG
+Path to an alternative configuration file.
+.TP
+.B NO_COLOR
+If set, all colour is suppressed, overriding \fB\-\-color\fR.
+.SH EXAMPLES
+.TP
+The single best match in each competition tomorrow:
+.B footy -t -g -n 1
+.TP
+Only the standout fixtures this week:
+.B footy -w -s 4
+.SH SEE ALSO
+.BR systemctl (1),
+.BR notify-send (1)
+.PP
+A daily digest is available as a systemd user timer; see
+.I footy.timer
+in the project directory.

@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily football digest
+
+[Timer]
+OnCalendar=*-*-* 09:00:00
+Persistent=true
+AccuracySec=1m
+
+[Install]
+WantedBy=timers.target

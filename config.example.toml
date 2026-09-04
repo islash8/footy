@@ -1,0 +1,88 @@
+# footy configuration
+#
+# Edit and re-run `footy` - no restart, no daemon, nothing to reload.
+
+# Teams you follow. Any spelling ESPN would recognise works ("Arsenal",
+# "Man Utd", "Atletico"); accents and punctuation are ignored.
+# Their matches get a scoring boost but are NOT pinned to the top - a dull
+# match of theirs still ranks below a great one elsewhere.
+favourites = []
+
+[display]
+limit      = 0   # 0 = show everything; e.g. 10 shows only the top 10
+min_stars  = 0   # hide anything below this rating
+notify_top = 3   # how many matches the morning notification lists
+
+# Competitions to follow, and how much weight each carries.
+# Add any ESPN soccer slug here, e.g. ned.1, por.1, eng.2, tur.1, bra.1, arg.1.
+[leagues."eng.1"]
+name = "Premier League"
+short = "PL"
+weight = 1.00
+
+[leagues."eng.2"]
+name = "Championship"
+short = "Champ"
+weight = 0.72
+
+[leagues."esp.1"]
+name = "LaLiga"
+short = "LaLiga"
+weight = 0.97
+
+[leagues."ita.1"]
+name = "Serie A"
+short = "Serie A"
+weight = 0.95
+
+[leagues."ger.1"]
+name = "Bundesliga"
+short = "Bundesliga"
+weight = 0.93
+
+[leagues."fra.1"]
+name = "Ligue 1"
+short = "Ligue 1"
+weight = 0.85
+
+[leagues."ned.1"]
+name = "Eredivisie"
+short = "Eredivisie"
+weight = 0.82
+
+[leagues."ger.2"]
+name = "2. Bundesliga"
+short = "2.BL"
+weight = 0.76
+
+[leagues."uefa.champions"]
+name = "Champions League"
+short = "UCL"
+weight = 1.15
+
+[leagues."uefa.europa"]
+name = "Europa League"
+short = "UEL"
+weight = 0.90
+
+# IPTV - OPTIONAL. Opens a match with `footy --watch N` (mpv/vlc, or any
+# player you name). Nothing here ships in the repo; your credentials live
+# only in this gitignored config.toml.
+#
+# The whole [iptv] block is your own bring-your-own setup. If you already
+# use iptvnator, `footy --import-iptvnator` copies your Xtream credentials
+# here in one shot. Otherwise paste them below (Xtream Codes login):
+#
+# [iptv]
+# host = "http://provider.example:2095"
+# username = "user"
+# password = "pass"
+# player = "mpv"                       # auto-detected (mpv -> vlc) if unset
+# epg_url = "https://al7omed.github.io/bein-epg/guide.xml"
+# quality = ["4K", "FHD", "HD", "SD", "LOW"]
+#
+# Optional hints for the fallback picker - the EPG finds the channel
+# automatically on matchdays, so these only matter when it can't:
+#
+# [iptv.channels]
+# "uefa.champions" = "beIN SPORTS 1"

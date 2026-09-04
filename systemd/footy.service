@@ -1,0 +1,8 @@
+[Unit]
+Description=footy - morning football digest
+Documentation=https://github.com/islash8/footy
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/footy --notify
