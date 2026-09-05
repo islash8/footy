@@ -1,4 +1,4 @@
-.TH FOOTY 1 "September 2026" "footy 1.1" "User Commands"
+.TH FOOTY 1 "September 2026" "footy 1.2" "User Commands"
 .SH NAME
 footy \- rank today's football matches by how interesting they are
 .SH SYNOPSIS
@@ -84,6 +84,14 @@ section into
 .B [iptv]
 section is always bring-your-own.
 .TP
+.B \-\-nudge
+Timer mode for the kickoff timer: silent unless the top-rated match is about
+to kick off (within
+.IR nudge_min
+minutes) or a team you follow is live, in which case a desktop notification
+is sent - with the channel, when IPTV is configured. Notifies only; it never
+opens a stream.
+.TP
 .B \-\-json
 Print machine-readable JSON.
 .TP
@@ -115,7 +123,14 @@ each club with its league position,
 .BR (H) " and " (A)
 for home and away, the competition, and
 .B <3
-if it is a team you follow. The second line is each side's last five results.
+if it is a team you follow. The second line is each side's last five results,
+preceded by why the match is here -
+.BR "El Clasico" ,
+.BR "top-of-the-table clash" ,
+.BR "six-pointer" ,
+.BR "both in form" .
+Position-based claims are only made once the table has earned them, so early
+in a season the second line mostly just shows form.
 .PP
 Team names are coloured by who is expected to win: green for the favourite,
 amber for the underdog, and purple when it is too close to call. That
@@ -166,6 +181,12 @@ there is nothing to reload. An
 section configures the IPTV provider, player, quality preference and EPG
 source for
 .BR \-\-watch .
+The
+.B [display]
+section can set
+.IR nudge_min ,
+the minutes-ahead window used by
+.BR \-\-nudge .
 .TP
 .I ~/.cache/footy
 Cached responses. Fixtures are held for five minutes and tables for six hours,
@@ -190,6 +211,17 @@ Only the standout fixtures this week:
 .SH SEE ALSO
 .BR systemctl (1),
 .BR notify-send (1)
+.PP
+Two user timers are installed with
+.IR install.sh :
+.I footy.timer
+(sends the morning digest at 09:00) and
+.I footy-kickoff.timer
+(runs
+.B footy \-\-nudge
+every five minutes). See the project's
+.I systemd
+directory.
 .PP
 A daily digest is available as a systemd user timer; see
 .I footy.timer

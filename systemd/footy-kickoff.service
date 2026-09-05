@@ -1,0 +1,7 @@
+[Unit]
+Description=footy - kickoff nudge
+Documentation=https://github.com/islash8/footy
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/footy --nudge

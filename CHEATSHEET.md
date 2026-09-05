@@ -34,6 +34,7 @@ footy            # today, ranked best first
 | `footy --watch 3` | Open match #3 in your IPTV player (mpv/vlc) |
 | `footy --watch` | Numbered list, then pick one to open |
 | `footy --playlist` | Today's matches as an M3U, for your player |
+| `footy --nudge` | Timer mode: notify when a match is about to kick off |
 | `footy --iptv-channels` | List provider channels, grouped by name/quality |
 | `footy --color` | Force colour when piping (e.g. `footy --color \| less -R`) |
 
@@ -75,6 +76,7 @@ turns itself off when piped unless you pass `--color`.
 | `<3` | A team you follow |
 | colour | Green favourite, amber underdog, purple too close |
 | `LLWLD` | Last five results, home / away |
+| `El Clasico`, `six-pointer`… | Second line: *why* the match is here (only once the table has earned it) |
 
 ## Config
 
@@ -88,6 +90,7 @@ favourites = []                 # e.g. "Liverpool" - boosted, not pinned
 limit = 0                       # 0 = show all
 min_stars = 0
 notify_top = 3
+nudge_min = 10                  # --nudge window in minutes (0 disables)
 
 [leagues."ned.1"]
 name = "Eredivisie"

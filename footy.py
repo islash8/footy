@@ -37,7 +37,7 @@ ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = Path(os.environ.get("FOOTY_CONFIG", ROOT / "config.toml"))
 CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "footy"
 TIMEOUT = 20
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 
 # --------------------------------------------------------------------------
@@ -58,7 +58,7 @@ DEFAULT_CONFIG = {
         "uefa.europa": {"name": "Europa League", "short": "UEL", "weight": 0.90},
     },
     "favourites": [],
-    "display": {"limit": 0, "min_stars": 0, "notify_top": 3},
+    "display": {"limit": 0, "min_stars": 0, "notify_top": 3, "nudge_min": 10},
 }
 
 
@@ -196,12 +196,14 @@ _TABLES: dict[tuple[str, int], dict] = {}
 _TEAMS: dict[str, list[dict]] = {}
 
 
-def get_fixtures(slug: str, day: date) -> list[dict]:
+def get_fixtures(slug: str, day: date, ttl: int | None = None) -> list[dict]:
     key = (slug, f"{day:%Y%m%d}")
     if key not in _FIXTURES:
         # Today's scores move minute to minute; a fixture three weeks out does
         # not, so don't re-fetch the whole lookahead window every five minutes.
-        ttl = 300 if day <= date.today() else 12 * 3600
+        # The nudge timer polls every few minutes, so it passes a longer TTL
+        # and reads from cache instead of hammering ESPN.
+        ttl = ttl or (300 if day <= date.today() else 12 * 3600)
         url = f"{API}/site/v2/sports/soccer/{slug}/scoreboard?dates={day:%Y%m%d}"
         _FIXTURES[key] = fetch(
             url, cache_key=f"fx_{slug}_{day:%Y%m%d}", ttl=ttl
@@ -440,11 +442,26 @@ def score_match(event, table, league, fav_ids, domestic=None, cross=False):
     if fav:
         score += 0.30  # weighted boost, not a pin: a dull match stays dull
 
+    # Why is this match worth watching? Derived from the same confidence-
+    # adjusted signals that produced the score. Position-based claims only
+    # once the table has earned them (same fade the score uses).
+    confident = confidence >= 0.5
+    why = []
+    if derby:
+        why.append(derby)
+    if confident and both_strong:
+        why.append("top-of-the-table clash")
+    if confident and closeness:
+        why.append("six-pointer")
+    if hw >= 4 and aw >= 4:
+        why.append("both in form")
+
     return {
         "score": score,
         "edge": edge,
         "derby": derby,
         "favourite": bool(fav),
+        "why": why[:3],
         "home": home,
         "away": away,
         "home_row": hrow,
@@ -655,14 +672,14 @@ def render(matches, tz, colour: bool, show_date: date) -> str:
 
         # second line: why this match is here
         notes = []
-        if m["derby"]:
-            notes.append(C(MAGENTA, m["derby"]))
+        for phrase in m.get("why", []):
+            notes.append(C(MAGENTA, phrase) if phrase == m["derby"] else C(DIM, phrase))
         hf, af = m["home"].get("form"), m["away"].get("form")
         if hf and af:
             notes.append(f"{hf} / {af}")
         if notes:
             pad = " " * 16
-            out.append(f"{pad}{C(DIM, '  '.join(notes))}")
+            out.append(f"{pad}{'  '.join(notes)}")
 
     header = C(BOLD, show_date.strftime("%A %-d %B"))
     return f"\n  {header}\n\n" + "\n".join(out) + "\n"
@@ -765,14 +782,19 @@ def ordinal(n: int) -> str:
     return f"{n}{suffix}"
 
 
-def notify(matches, tz, top: int) -> None:
+def _notify_send(title: str, body: str) -> None:
     if not shutil.which("notify-send"):
         warn("notify-send not found")
         return
+    subprocess.run(
+        ["notify-send", "-a", "footy", "-i", "applications-games", title, body],
+        check=False,
+    )
+
+
+def notify(matches, tz, top: int) -> None:
     if not matches:
-        subprocess.run(
-            ["notify-send", "-a", "footy", "Football", "Nothing on today."], check=False
-        )
+        _notify_send("Football", "Nothing on today.")
         return
 
     lines = []
@@ -786,29 +808,23 @@ def notify(matches, tz, top: int) -> None:
             f"{m['away']['team']['shortDisplayName']}"
             f"  <i>{m['league']['short']}</i>{mark}"
         )
-    subprocess.run(
-        [
-            "notify-send", "-a", "footy", "-i", "applications-games",
-            f"{len(matches)} matches today",
-            "\n".join(lines),
-        ],
-        check=False,
-    )
+    _notify_send(f"{len(matches)} matches today", "\n".join(lines))
 
 
 # --------------------------------------------------------------------------
 # main
 # --------------------------------------------------------------------------
 
-def gather(cfg, day: date, only=None):
+def gather(cfg, day: date, only=None, fixture_ttl: int | None = None):
     """Score a day's matches. `only` limits which competitions' fixtures are
     fetched; tables are still read for all of them, since they are cached for
-    hours and are what gives European opponents a league position."""
+    hours and are what gives European opponents a league position.
+    `fixture_ttl` overrides the fixture cache lifetime (used by --nudge)."""
     leagues = cfg["leagues"]
     wanted = [s for s in leagues if only is None or s in only]
 
     with ThreadPoolExecutor(max_workers=min(12, len(leagues) * 2)) as pool:
-        fx = {slug: pool.submit(get_fixtures, slug, day) for slug in wanted}
+        fx = {slug: pool.submit(get_fixtures, slug, day, fixture_ttl) for slug in wanted}
         st = {slug: pool.submit(get_standings, slug, day) for slug in leagues}
 
         events_by_league, tables = {}, {}
@@ -1123,6 +1139,71 @@ def show_iptv_channels(cfg) -> int:
     return 0
 
 
+def show_nudge(cfg, day, tz, now=None) -> int:
+    """Timer one-shot: notify when a match is about to kick off.
+
+    Silent unless something is near: the top-rated match kicking off within
+    `nudge_min` minutes, plus any live favourite. Notifies only - opening
+    stays manual via `--watch`. Fixtures use a longer cache so the 5-minute
+    timer reads from disk instead of polling ESPN. `now` is injectable for
+    tests.
+    """
+    nudge_min = int(cfg["display"].get("nudge_min", 10))
+    if nudge_min <= 0:
+        return 0
+    try:
+        matches = gather(cfg, day, fixture_ttl=1800)
+    except Exception as exc:
+        warn(f"could not fetch {day}: {exc}")
+        return 1
+
+    now = now or datetime.now(tz)
+    live, soon = [], []
+    for m in matches:
+        state = match_state(m)
+        if state == "in" and m["favourite"]:
+            live.append(m)
+        elif state == "pre":
+            mins = (kickoff(m, tz) - now).total_seconds() / 60
+            if 0 <= mins <= nudge_min:
+                soon.append((mins, m))
+    if not live and not soon:
+        return 0  # nothing near: stay silent for the timer
+
+    best_soon = max(soon, key=lambda t: t[1]["score"]) if soon else None
+    picks = live + ([best_soon[1]] if best_soon else [])
+
+    # Channel info is a bonus; never let a provider hiccup break the nudge.
+    channels = {}
+    try:
+        import iptv
+        iptv_cfg = iptv.load(cfg)
+        if iptv_cfg:
+            groups = iptv.group_streams(iptv.streams(iptv_cfg))
+            _, programmes = iptv.epg(iptv_cfg)
+            for m in picks:
+                r = iptv.best(m, iptv_cfg, groups=groups, programmes=programmes)
+                if r:
+                    channels[id(m)] = f"  on {r['channel']} {r['quality']}"
+    except Exception:
+        pass
+
+    lines = []
+    for m in picks:
+        when = "LIVE" if match_state(m) == "in" else kickoff(m, tz).strftime("%H:%M")
+        mark = " <3" if m["favourite"] else ""
+        lines.append(
+            f"{when}  {m['home']['team']['shortDisplayName']} v "
+            f"{m['away']['team']['shortDisplayName']}  "
+            f"[{m['league']['short']}]{mark}{channels.get(id(m), '')}"
+        )
+    title = "footy - live now" if live else (
+        f"footy - kickoff in {int(best_soon[0])}m"
+    )
+    _notify_send(title, "\n".join(lines))
+    return 0
+
+
 def main() -> int:
     p = argparse.ArgumentParser(
         prog="footy", description="What football is worth watching today."
@@ -1176,6 +1257,10 @@ def main() -> int:
         "--import-iptvnator", action="store_true",
         help="local helper: seed [iptv] credentials from an iptvnator install",
     )
+    p.add_argument(
+        "--nudge", action="store_true",
+        help="timer mode: notify when a match is about to kick off",
+    )
     args = p.parse_args()
 
     cfg = load_config()
@@ -1200,6 +1285,9 @@ def main() -> int:
         if args.min_stars is not None
         else int(cfg["display"].get("min_stars", 0))
     )
+
+    if args.nudge:
+        return show_nudge(cfg, start, tz)
 
     if args.import_iptvnator:
         return show_import_iptvnator(cfg)
@@ -1248,6 +1336,7 @@ def main() -> int:
                         "league": m["league"]["name"],
                         "score": round(m["score"], 4),
                         "derby": m["derby"],
+                        "why": m.get("why", []),
                         "edge": m["edge"],
                         "favourite": m["favourite"],
                         "status": m["event"]["competitions"][0]["status"]["type"]["state"],

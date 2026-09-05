@@ -1,5 +1,7 @@
 # footy
 
+[![CI](https://github.com/islash8/footy/actions/workflows/ci.yml/badge.svg)](https://github.com/islash8/footy/actions/workflows/ci.yml)
+
 One command, the football worth watching. No API key, no signup, no ads,
 no cookie banners, no trackers.
 
@@ -61,6 +63,7 @@ footy --watch          # numbered list, then pick one
 footy --playlist       # today's matches as an M3U, for importing into a player
 footy --iptv-channels  # list your provider's channels, grouped by name/quality
 footy --import-iptvnator  # one-shot: copy your IPTV login from iptvnator
+footy --nudge           # timer mode: notify when a match is about to kick off
 footy --version
 ```
 
@@ -105,6 +108,21 @@ remembers your last choice per league in `~/.cache/footy/watchstate.json`.
 The EPG URL is a config value — swap in another XMLTV source in `[iptv]`
 (`epg_url = "..."`) if you ever need to.
 
+## Timers (optional, systemd user session)
+
+`install.sh` enables two user timers. The 09:00 digest sends the morning's
+top matches; `footy --nudge` (every 5 min) is silent unless the top-rated
+match is about to kick off, or one of your teams is live — then it notifies
+with the time (and channel, if IPTV is configured). It never opens anything.
+
+```sh
+systemctl --user list-timers 'footy*'     # see both timers
+systemctl --user edit footy.timer         # change the digest time
+systemctl --user disable --now footy.timer footy-kickoff.timer
+```
+
+The nudge window is `nudge_min` in `[display]` (default 10, `0` disables).
+
 ## Reading a line
 
 ```
@@ -115,6 +133,11 @@ The EPG URL is a config value — swap in another XMLTV source in `[iptv]`
 Stars (absolute, 1-5), kickoff in local time, league position beside each
 club, `(H)`/`(A)` for home and away, the competition, `<3` for a team you
 follow, and both sides' last five results.
+
+The second line explains why the match is here — `El Clasico`,
+`top-of-the-table clash`, `six-pointer`, `both in form`. Position-based
+claims are only made once the table has earned them, so early in a season
+the second line mostly just shows form.
 
 Team names are coloured by expectation: **green** for the favourite, **amber**
 for the underdog, **purple** when it's too close to call - drawn from table
@@ -185,3 +208,5 @@ python3 -m venv .venv
 .venv/bin/pip install pytest
 .venv/bin/pytest -q        # test suite; network-free, fetch is stubbed
 ```
+
+The same suite runs on GitHub Actions for Python 3.11–3.13 on every push.

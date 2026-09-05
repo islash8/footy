@@ -43,20 +43,22 @@ fi
 
 if command -v systemctl >/dev/null 2>&1; then
   mkdir -p "$UNITS"
-  install -m644 "$ROOT/systemd/footy.service" "$UNITS/footy.service"
-  install -m644 "$ROOT/systemd/footy.timer"   "$UNITS/footy.timer"
+  install -m644 "$ROOT/systemd/footy.service"        "$UNITS/footy.service"
+  install -m644 "$ROOT/systemd/footy.timer"          "$UNITS/footy.timer"
+  install -m644 "$ROOT/systemd/footy-kickoff.service" "$UNITS/footy-kickoff.service"
+  install -m644 "$ROOT/systemd/footy-kickoff.timer"  "$UNITS/footy-kickoff.timer"
   if systemctl --user daemon-reload 2>/dev/null \
-     && systemctl --user enable --now footy.timer 2>/dev/null; then
+     && systemctl --user enable --now footy.timer footy-kickoff.timer 2>/dev/null; then
     echo "morning digest enabled:"
-    systemctl --user list-timers footy.timer --no-pager | sed -n '1,2p'
+    systemctl --user list-timers footy.timer footy-kickoff.timer --no-pager | sed -n '1,3p'
     echo
-    echo "change the time with: systemctl --user edit footy.timer"
-    echo "turn it off with:     systemctl --user disable --now footy.timer"
+    echo "change the digest time with: systemctl --user edit footy.timer"
+    echo "turn the timers off with:    systemctl --user disable --now footy.timer footy-kickoff.timer"
   else
-    echo "note: could not enable the user timer (no systemd user session?);"
+    echo "note: could not enable the user timers (no systemd user session?);"
     echo "      unit files are in $UNITS - enable with:"
-    echo "      systemctl --user enable --now footy.timer"
+    echo "      systemctl --user enable --now footy.timer footy-kickoff.timer"
   fi
 else
-  echo "note: systemctl not found; skipping the morning digest timer"
+  echo "note: systemctl not found; skipping the timers"
 fi

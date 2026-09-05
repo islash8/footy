@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 import footy
@@ -256,6 +258,47 @@ def test_score_match_favourite_boost():
     assert fav["score"] > plain["score"]
 
 
+def test_score_match_why_top_clash():
+    # rank 1 v 2, both played 20 -> confident table, both strong, tight gap
+    m = footy.score_match(event("h", "a"), _big_table(), LEAGUE, set())
+    assert "top-of-the-table clash" in m["why"]
+    assert "six-pointer" in m["why"]
+
+
+def test_score_match_why_derby():
+    m = footy.score_match(event("83", "86"), _big_table(), LEAGUE, set())
+    assert m["why"][0] == "El Clasico"
+
+
+def test_score_match_why_early_season_silent():
+    # Two games in: the table hasn't earned position-based claims.
+    early = {}
+    early.update(table_row("h", "Home Big", 1, played=2, points=6, gf=4, ga=1, won=2))
+    early.update(table_row("a", "Away Big", 2, played=2, points=3, gf=2, ga=3, won=1))
+    m = footy.score_match(event("h", "a"), early, LEAGUE, set())
+    assert "top-of-the-table clash" not in m["why"]
+    assert "six-pointer" not in m["why"]
+    # form is trustworthy even early, so it still shows
+    assert "both in form" in m["why"]
+
+
+def test_render_shows_why_line():
+    from datetime import date
+    matches = [footy.score_match(event("h", "a"), _big_table(), LEAGUE, set())]
+    out = footy.render(matches, footy.timezone.utc, colour=False,
+                       show_date=date(2026, 9, 4))
+    assert "top-of-the-table clash" in out
+
+
+def test_json_includes_why():
+    m = footy.score_match(event("h", "a"), _big_table(), LEAGUE, set())
+    blob = json.dumps({
+        "score": round(m["score"], 4), "derby": m["derby"],
+        "why": m.get("why", []), "edge": m["edge"],
+    })
+    assert json.loads(blob)["why"] == m["why"]
+
+
 def test_score_match_early_season_fade():
     # With two games played the table hasn't earned its confidence, so a
     # genuine top-of-the-table clash is rated more cautiously than it would be
@@ -350,3 +393,85 @@ def test_gather_and_render(monkeypatch):
     assert "Liverpool" in out
     assert "Everton" in out
     assert "<3" in out
+
+
+# --------------------------------------------------------------------------
+# nudge
+# --------------------------------------------------------------------------
+
+def _scored_event(home, away, iso, state="pre", score=0.5, fav=False, short="PL"):
+    ev = event(home, away, state=state, date=iso)
+    comp = ev["competitions"][0]
+    return {
+        "score": score,
+        "favourite": fav,
+        "home": comp["competitors"][0],
+        "away": comp["competitors"][1],
+        "event": ev,
+        "league": {"name": "Premier League", "short": short, "weight": 1.0},
+    }
+
+
+def _nudge_cfg():
+    return {"display": {"limit": 0, "min_stars": 0, "notify_top": 3, "nudge_min": 10},
+            "leagues": {}}
+
+
+def test_nudge_notifies_upcoming(monkeypatch):
+    from datetime import date, datetime, timezone
+    tz = timezone.utc
+    fixed = datetime(2026, 9, 4, 18, 50, tzinfo=tz)
+    matches = [
+        _scored_event("h", "a", "2026-09-04T18:55:00Z", score=0.9),  # in window
+        _scored_event("x", "y", "2026-09-04T20:00:00Z", score=0.8),  # far away
+    ]
+    monkeypatch.setattr(footy, "gather", lambda cfg, day, fixture_ttl=None: matches)
+    sent = {}
+    monkeypatch.setattr(footy, "_notify_send",
+                        lambda title, body: sent.update({"title": title, "body": body}))
+    cfg = _nudge_cfg()
+    rc = footy.show_nudge(cfg, date(2026, 9, 4), tz, now=fixed)
+    assert rc == 0
+    assert "kickoff in 5m" in sent["title"]
+    assert "Home" in sent["body"]
+
+
+def test_nudge_includes_live_favourite(monkeypatch):
+    from datetime import date, datetime, timezone
+    tz = timezone.utc
+    fixed = datetime(2026, 9, 4, 18, 50, tzinfo=tz)
+    matches = [
+        _scored_event("h", "a", "2026-09-04T18:30:00Z", state="in", score=0.5, fav=True),
+    ]
+    monkeypatch.setattr(footy, "gather", lambda cfg, day, fixture_ttl=None: matches)
+    sent = {}
+    monkeypatch.setattr(footy, "_notify_send",
+                        lambda title, body: sent.update({"title": title, "body": body}))
+    cfg = _nudge_cfg()
+    rc = footy.show_nudge(cfg, date(2026, 9, 4), tz, now=fixed)
+    assert rc == 0
+    assert "live now" in sent["title"]
+    assert " <3" in sent["body"]
+
+
+def test_nudge_silent_when_nothing_near(monkeypatch):
+    from datetime import date, datetime, timezone
+    tz = timezone.utc
+    fixed = datetime(2026, 9, 4, 18, 50, tzinfo=tz)
+    matches = [_scored_event("h", "a", "2026-09-04T20:00:00Z", score=0.9)]
+    monkeypatch.setattr(footy, "gather", lambda cfg, day, fixture_ttl=None: matches)
+    sent = {}
+    monkeypatch.setattr(footy, "_notify_send",
+                        lambda title, body: sent.update({"title": title, "body": body}))
+    cfg = _nudge_cfg()
+    rc = footy.show_nudge(cfg, date(2026, 9, 4), tz, now=fixed)
+    assert rc == 0
+    assert not sent
+
+
+def test_nudge_disabled_when_zero(monkeypatch):
+    from datetime import date
+    cfg = _nudge_cfg()
+    cfg["display"]["nudge_min"] = 0
+    monkeypatch.setattr(footy, "gather", lambda *a, **k: (_ for _ in ()).throw(AssertionError("should not gather")))
+    assert footy.show_nudge(cfg, date(2026, 9, 4), footy.timezone.utc) == 0

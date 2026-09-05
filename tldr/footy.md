@@ -55,6 +55,10 @@
 
 `footy --playlist`
 
+- Timer mode: notify when a match is about to kick off (or a team you follow is live):
+
+`footy --nudge`
+
 - Output JSON, or keep colour when piping:
 
 `footy {{--json|--color}}`

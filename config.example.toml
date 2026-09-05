@@ -12,6 +12,7 @@ favourites = []
 limit      = 0   # 0 = show everything; e.g. 10 shows only the top 10
 min_stars  = 0   # hide anything below this rating
 notify_top = 3   # how many matches the morning notification lists
+nudge_min  = 10  # --nudge window in minutes (0 disables)
 
 # Competitions to follow, and how much weight each carries.
 # Add any ESPN soccer slug here, e.g. ned.1, por.1, eng.2, tur.1, bra.1, arg.1.
